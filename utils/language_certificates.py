@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+import re
+from typing import List, Tuple, Optional
+
+from .ocr_ects import ocr_text_from_pdf
+from .grading_systems import normalize_country_name
+
+
+def _merge_texts(pdf_paths: List[str]) -> str:
+    parts = []
+    for p in pdf_paths:
+        try:
+            parts.append(ocr_text_from_pdf(p))
+        except Exception as e:
+            print(
+                f"WARNUNG: OCR-Fehler beim Lesen von Sprachzertifikat {p}: {e}")
+    return "\n".join(parts)
+
+
+def evaluate_language_status_bwl(
+    lang_pdfs: List[str],
+    bachelor_country_raw: str,
+) -> str:
+
+    norm_country = normalize_country_name(bachelor_country_raw or "")
+    if norm_country == "germany":
+        return "not necessary"
+
+    if not lang_pdfs:
+        return "required but not available"
+
+    text = _merge_texts(lang_pdfs).lower()
+
+    patterns = [
+        r"dsh[-\s]?2",
+        r"dsh[-\s]?3",
+        r"testdaf",
+        r"goethe[-\s]?zertifikat\s*c2",
+        r"kleine[s]?\s+deutsche[s]?\s+sprachdiplom",
+        r"große[s]?\s+deutsche[s]?\s+sprachdiplom",
+        r"zentrale\s+oberstufenpr(ü|u)fung",
+        r"deutsches\s+sprachdiplom",
+        r"telc\s+deutsch\s+c1\s+hochschule",
+        r"\b(ö|oe)sd\s*c2",
+        r"(österreichisches|oesterreichisches)\s+sprachdiplom",
+    ]
+
+    if any(re.search(p, text) for p in patterns):
+        return "available (German C1/C2 or equivalent)"
+    else:
+        return "available (unclassified German certificate)"
+
+
+def evaluate_language_status_ai(
+    lang_pdfs: List[str],
+) -> str:
+    """
+    AI: English-taught. Everybody needs English proof, but we only report status.
+    """
+    if not lang_pdfs:
+        return "required but not available"
+
+    text = _merge_texts(lang_pdfs).lower()
+
+    # TOEFL
+    if "toefl" in text:
+
+        nums = [float(x.replace(",", "."))
+                for x in re.findall(r"\b\d{2,3}\b", text)]
+        if any(n >= 500 for n in nums) or any(n >= 200 for n in nums) or any(n >= 80 for n in nums):
+            return "available (likely sufficient TOEFL)"
+        else:
+            return "available (TOEFL but unclear score)"
+
+    # IELTS
+    if "ielts" in text:
+        nums = [float(x.replace(",", "."))
+                for x in re.findall(r"\b\d(?:[.,]\d)?\b", text)]
+        if any(n >= 6.0 for n in nums):
+            return "available (likely sufficient IELTS)"
+        else:
+            return "available (IELTS but unclear score)"
+
+    # Cambridge / Linguaskill
+    if "cambridge" in text or "linguaskill" in text:
+        if "b2" in text or "c1" in text:
+            return "available (Cambridge/Linguaskill B2+)"
+        else:
+            return "available (Cambridge/Linguaskill unclassified)"
+
+    #  Abitur
+    if "abitur" in text and "engl" in text:
+        return "available (German Abitur with English)"
+
+    # Medium of instruction
+    if "medium of instruction" in text or "language of instruction" in text:
+        if "english" in text:
+            return "available (degree taught in English)"
+        else:
+            return "available (medium of instruction unclassified)"
+
+    return "available (unclassified English certificate)"
