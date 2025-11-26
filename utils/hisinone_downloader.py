@@ -9,6 +9,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+
 def wait_for_any_file(download_dir, pattern="*.zip", timeout=40, prev=None):
     prev_set = set(prev or glob.glob(os.path.join(download_dir, pattern)))
     deadline = time.time() + timeout
