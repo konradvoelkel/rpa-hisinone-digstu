@@ -5,6 +5,13 @@ import sys
 import argparse
 import importlib
 import sys
+import logging
+logging.basicConfig(
+    level=logging.INFO, # Change this to logging.INFO to hide debugs
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%H:%M:%S"
+)
+
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -12,12 +19,7 @@ from selenium.webdriver.chrome.options import Options
 from utils.browserautomation import BrowserAutomation
 from phases.filterphase_evaluierung import run_filterphase_evaluierung
 
-import logging
-logging.basicConfig(
-    level=logging.DEBUG, # Change this to logging.INFO to hide debugs
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%H:%M:%S"
-)
+
 
 LOGIN_URL = "https://digstu.hhu.de/qisserver/pages/cs/sys/portal/hisinoneStartPage.faces"
 FLOW_URL = "https://digstu.hhu.de/qisserver/pages/startFlow.xhtml?_flowId=searchApplicants-flow&navigationPosition=hisinoneapp,applicationEditorGeneratedJSFDtos&recordRequest=true"
@@ -26,9 +28,10 @@ FLOW_URL = "https://digstu.hhu.de/qisserver/pages/startFlow.xhtml?_flowId=search
 def create_chrome_options(download_dir):
     chrome_options = Options()
 
-    chrome_options.add_argument("--window-size=1400,900")
     chrome_options.add_argument("--ignore-certificate-errors")
     chrome_options.add_argument("--enable-javascript")
+#    chrome_options.add_argument("--window-size=1400,900")
+    chrome_options.add_argument("--headless") # prevents focus stealing, can work alongside ;-)
 
     chrome_options.add_experimental_option("prefs", {
         "credentials_enable_service": False,

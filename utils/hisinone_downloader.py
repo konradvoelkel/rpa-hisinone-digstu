@@ -30,13 +30,10 @@ def extract_zip_to_dir(zip_path, target_dir):
 
 
 def find_pdfs_in_dir(d):
-    pdfs = glob.glob(os.path.join(d, "**", "*.pdf"), recursive=True)
-    print("XXX ", os.path.basename(p).lower())
-    return [
-        p for p in pdfs
-        if "__deckblatt" not in os.path.basename(p).lower()
-        and "deckblatt" not in os.path.basename(p).lower()
-    ]
+    return (
+        p for p in glob.iglob(os.path.join(d, "**", "*.pdf"), recursive=True)
+        if "deckblatt" not in os.path.basename(p).lower()
+    )
 
 
 def download_pdfs_for_applicant(browser, download_dir, extract_dir, applicant_num):
@@ -99,6 +96,6 @@ def download_pdfs_for_applicant(browser, download_dir, extract_dir, applicant_nu
     logging.info(f"unpacking zip {extract_target}")
     extract_zip_to_dir(zip_path, extract_target)
 
-    pdfs = find_pdfs_in_dir(extract_target)
+    pdfs = list(find_pdfs_in_dir(extract_target))
     logging.debug(f"{len(pdfs)} PDFs found: {[os.path.basename(p) for p in pdfs]}")
     return pdfs

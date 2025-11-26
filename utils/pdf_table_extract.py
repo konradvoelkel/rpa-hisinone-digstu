@@ -1,4 +1,5 @@
 import re
+import logging
 
 try:
     import pdfplumber
@@ -40,7 +41,7 @@ ECTS_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*CP", re.IGNORECASE)
 def extract_tables_from_pdf(pdf_path: str):
 
     if pdfplumber is None:
-        print("WARNUNG: pdfplumber nicht installiert, kann Tabellen nicht lesen.")
+        logging.warn("pdfplumber nicht installiert, kann Tabellen nicht lesen.")
         return []
 
     rows = []
@@ -56,8 +57,8 @@ def extract_tables_from_pdf(pdf_path: str):
                     }
                 )
             except Exception as e:
-                print(
-                    f"WARNUNG: pdfplumber-Fehler auf Seite {page_idx+1}: {e}")
+                logging.warn(
+                    f"pdfplumber-Fehler auf Seite {page_idx+1}: {e}")
                 continue
 
             if not tables:
@@ -74,8 +75,8 @@ def extract_tables_from_pdf(pdf_path: str):
                         continue
                     rows.append(cells)
 
-    print(
-        f"DEBUG pdf_table_extract: {len(rows)} Zeilen in {pdf_path} gefunden.")
+    logging.debug(
+        f"pdf_table_extract: {len(rows)} Zeilen in {pdf_path} gefunden.")
     return rows
 
 
@@ -143,7 +144,7 @@ def parse_modules_from_rows(rows):
             }
         )
 
-    print(f"DEBUG pdf_table_extract: {len(modules)} Modulzeilen erkannt.")
+    logging.debug(f"pdf_table_extract: {len(modules)} Modulzeilen erkannt.")
     return modules
 
 
