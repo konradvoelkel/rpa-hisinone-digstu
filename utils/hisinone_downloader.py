@@ -38,7 +38,7 @@ def find_pdfs_in_dir(d):
 
 
 def download_pdfs_for_applicant(browser, download_dir, extract_dir, applicant_num):
-    logging.info(f"working on: Download-Button {applicant_num}")
+    logging.debug(f"working on: Download-Button {applicant_num}")
 
     xpaths = [
         "//button[contains(@aria-label,'Nachweise herunterladen')]",
@@ -60,7 +60,7 @@ def download_pdfs_for_applicant(browser, download_dir, extract_dir, applicant_nu
             pass
 
     if not dl_element:
-        logging.info(f"Kein Download-Element{applicant_num} ")
+        logging.info(f"Kein Download-Element bei {applicant_num} ")
         return []
 
     for f in glob.glob(os.path.join(download_dir, "*")):
@@ -71,7 +71,7 @@ def download_pdfs_for_applicant(browser, download_dir, extract_dir, applicant_nu
         except Exception as e:
             logging.error(f"{f} could not be deleted {e}")
 
-    logging.info("click Download-Button")
+    logging.debug("click Download-Button")
     try:
         browser.execute_script("arguments[0].click();", dl_element)
     except:
@@ -94,7 +94,7 @@ def download_pdfs_for_applicant(browser, download_dir, extract_dir, applicant_nu
         return []
 
     extract_target = os.path.join(extract_dir, f"{applicant_num}_{int(time.time())}")
-    logging.info(f"unpacking zip {extract_target}")
+    logging.debug(f"unpacking zip {extract_target}")
     extract_zip_to_dir(zip_path, extract_target)
 
     pdfs = list(find_pdfs_in_dir(extract_target))

@@ -2,6 +2,7 @@
 import os
 import re
 import logging
+import tqdm
 from typing import Dict, List, Tuple
 
 # Import the centralized OCR logic
@@ -127,7 +128,7 @@ def score_vpd(text_low: str) -> int:
 
 
 def classify_document(pdf_path: str, program: str) -> Tuple[str, Dict[str, int]]:
-    logging.info(f"Classifying: {os.path.basename(pdf_path)}")
+    logging.debug(f"Classifying: {os.path.basename(pdf_path)}")
     
     # -------------------------------------------------------------
     # OPTIMIZATION: Only OCR the first page for classification
@@ -168,7 +169,7 @@ def classify_many(pdf_paths: List[str], program: str):
     best_transcript = (None, None)
     best_transcript_score = -1
 
-    for pdf_path in pdf_paths:
+    for pdf_path in tqdm.tqdm(pdf_paths, desc="Classifying attached documents...", leave=False):
         doc_type, scores = classify_document(pdf_path, program)
         by_type.setdefault(doc_type, []).append(pdf_path)
         
