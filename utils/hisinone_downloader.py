@@ -3,6 +3,7 @@ import glob
 import time
 import shutil
 import zipfile
+import logging
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -17,7 +18,7 @@ def wait_for_any_file(download_dir, pattern="*.zip", timeout=40, prev=None):
         new = current - prev_set
         if new:
             return sorted(list(new), key=lambda p: os.path.getmtime(p))[-1]
-        time.sleep(0.5)
+        time.sleep(0.05)
     return None
 
 
@@ -30,16 +31,14 @@ def extract_zip_to_dir(zip_path, target_dir):
 
 
 def find_pdfs_in_dir(d):
-    pdfs = glob.glob(os.path.join(d, "**", "*.pdf"), recursive=True)
-    return [
-        p for p in pdfs
-        if "__deckblatt" not in os.path.basename(p).lower()
-        and "deckblatt" not in os.path.basename(p).lower()
-    ]
+    return (
+        p for p in glob.iglob(os.path.join(d, "**", "*.pdf"), recursive=True)
+        if "deckblatt" not in os.path.basename(p).lower()
+    )
 
 
 def download_pdfs_for_applicant(browser, download_dir, extract_dir, applicant_num):
-    print(f"erro: Download-Button {applicant_num}")
+    logging.info(f"working on: Download-Button {applicant_num}")
 
     xpaths = [
         "//button[contains(@aria-label,'Nachweise herunterladen')]",
@@ -55,31 +54,31 @@ def download_pdfs_for_applicant(browser, download_dir, extract_dir, applicant_nu
                 EC.element_to_be_clickable((By.XPATH, xp))
             )
             if dl_element:
-                print(f"DEBUG: Button gefunden: {xp}")
+                logging.debug(f"Button gefunden: {xp}")
                 break
         except Exception:
             pass
 
     if not dl_element:
-        print(f"Kein Download-Element{applicant_num} ")
+        logging.info(f"Kein Download-Element{applicant_num} ")
         return []
 
     for f in glob.glob(os.path.join(download_dir, "*")):
         try:
             if os.path.isfile(f) and f.lower().endswith((".zip", ".pdf")):
-                print(f"DEBUG: Removing leftover file in download_dir: {f}")
+                logging.debug(f"Removing leftover file in download_dir: {f}")
                 os.remove(f)
         except Exception as e:
-            print(f"erro {f} couldnt be deleted {e}")
+            logging.error(f"{f} could not be deleted {e}")
 
-    print("erro: click Download-Butto")
+    logging.info("click Download-Button")
     try:
         browser.execute_script("arguments[0].click();", dl_element)
     except:
         try:
             dl_element.click()
         except Exception as e:
-            print(f"error  {e}")
+            logging.error(f"{e}")
 
     prev_zips = glob.glob(os.path.join(download_dir, "*.zip"))
 
@@ -91,15 +90,13 @@ def download_pdfs_for_applicant(browser, download_dir, extract_dir, applicant_nu
     )
 
     if not zip_path:
-        print(f"error : no zip for {applicant_num} ")
+        logging.error(f"no zip for {applicant_num} ")
         return []
 
-    extract_target = os.path.join(
-        extract_dir, f"{applicant_num}_{int(time.time())}")
-    print(f"error unpacking zip {extract_target}")
+    extract_target = os.path.join(extract_dir, f"{applicant_num}_{int(time.time())}")
+    logging.info(f"unpacking zip {extract_target}")
     extract_zip_to_dir(zip_path, extract_target)
 
-    pdfs = find_pdfs_in_dir(extract_target)
-    print(
-        f"DEBUG: {len(pdfs)} PDFs found: {[os.path.basename(p) for p in pdfs]}")
+    pdfs = list(find_pdfs_in_dir(extract_target))
+    logging.debug(f"{len(pdfs)} PDFs found: {[os.path.basename(p) for p in pdfs]}")
     return pdfs

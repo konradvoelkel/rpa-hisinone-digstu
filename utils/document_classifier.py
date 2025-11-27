@@ -1,199 +1,162 @@
 #!/usr/bin/env python3
 import os
 import re
+import logging
+from typing import Dict, List, Tuple
 
-from pdf2image import convert_from_path
-import pytesseract
-
+# Import the centralized OCR logic
+from .ocr_ects import ocr_text_from_pdf
 from .ocr_engine import normalize_text
 
-
-def quick_ocr_preview(pdf_path: str, dpi: int = 200, psm: int = 6, max_pages: int = 2) -> str:
-
-    pages = convert_from_path(pdf_path, dpi=dpi)
-    text_parts = []
-    for i, img in enumerate(pages):
-        if i >= max_pages:
-            break
-        cfg = f"--psm {psm}"
-        txt = pytesseract.image_to_string(img, lang="deu+eng", config=cfg)
-        text_parts.append(txt)
-    return "\n".join(text_parts)
-
+TRANSCRIPT_KEYWORDS = [
+    "transcript of records", "transcript of academic record", "grade report",
+    "leistungsübersicht", "notenübersicht", "notenspiegel", "leistungsnachweis",
+    "official transcript", "academic transcript", "student transcript",
+    "unofficial transcript", "university transcript", "course transcript",
+    "academic record", "record of study", "record of academic work",
+    "course history", "study history", "study record", "marksheet",
+    "mark sheet", "marks sheet", "statement of marks", "statement of results",
+    "grade history", "performance report", "performance transcript",
+]
+ECTS_KEYWORDS = ["ects", "leistungspunkte", "credits", "credit points", "cp "]
+SEMESTER_RE = re.compile(r"(wise|sose|wintersemester|sommersemester|ws ?20|ss ?20)")
+LINE_WITH_DIGIT_RE = re.compile(r"^.*\d.*$", re.MULTILINE)
 
 def score_transcript(text_low: str, text_norm: str) -> int:
     score = 0
-
-    keywords_strong = [
-        "transcript of records",
-        "transcript of academic record",
-        "grade report",
-        "leistungsübersicht",
-        "notenübersicht",
-        "notenspiegel",
-        "leistungsnachweis",
-        "official transcript",
-        "academic transcript",
-        "student transcript",
-        "unofficial transcript",
-        "university transcript",
-        "course transcript",
-        "academic record",
-        "record of study",
-        "record of academic work",
-        "course history",
-        "study history",
-        "study record",
-        "marksheet",
-        "mark sheet",
-        "marks sheet",
-        "statement of marks",
-        "statement of results",
-        "grade history",
-        "performance report",
-        "performance transcript",
-    ]
-    if any(kw in text_low for kw in keywords_strong):
+    
+    if any(kw in text_low for kw in TRANSCRIPT_KEYWORDS):
         score += 4
 
-    if any(kw in text_low for kw in ["ects", "leistungspunkte", "credits", "credit points", "cp "]):
+    if any(kw in text_low for kw in ECTS_KEYWORDS):
         score += 3
 
-    if len(re.findall(r"(wise|sose|wintersemester|sommersemester|ws ?20|ss ?20)", text_low)) >= 2:
+    if len(SEMESTER_RE.findall(text_low)) >= 2:
         score += 2
 
-    if len(re.findall(r"\n.*\d+.*\n", text_low)) > 20:
+    # Heuristic: Transcripts usually have many lines with numbers (grades/credits)
+    numeric_line_count = len(LINE_WITH_DIGIT_RE.findall(text_low))
+    
+    if numeric_line_count > 20:
         score += 1
 
     return score
 
+GERMAN_CERT_KEYWORDS = [
+    "dsh-2", "dsh-3", "testdaf", "goethe-zertifikat c2",
+    "zentrale oberstufenpruefung", "zentrale oberstufenprüfung",
+    "deutsches sprachdiplom", "telc deutsch c1 hochschule",
+    "österreichisches sprachdiplom", "oesd c2",
+    "österreichische sprachdiplom c2",
+]
+
+# Generic terms that indicate a language exam took place, but aren't specific certificates
+GERMAN_GENERIC_KEYWORDS = ("sprachprüfung", "language exam")
+ENGLISH_CERT_KEYWORDS = [
+    "toefl", "test of english as a foreign language", "ielts",
+    "cambridge english", "b2 first", "first certificate",
+    "linguaskill", "language test report form", "english language test",
+]
+ENGLISH_GENERIC_KEYWORDS = ("overall band", "overall score")
 
 def score_language_cert(text_low: str, program: str) -> int:
     score = 0
     prog = program.lower()
 
     if prog == "bwl":
-
-        de_certs = [
-            "dsh-2",
-            "dsh-3",
-            "testdaf",
-            "goethe-zertifikat c2",
-            "zentrale oberstufenpruefung",
-            "zentrale oberstufenprüfung",
-            "deutsches sprachdiplom",
-            "telc deutsch c1 hochschule",
-            "österreichisches sprachdiplom",
-            "oesd c2",
-            "österreichische sprachdiplom c2",
-        ]
-        if any(kw in text_low for kw in de_certs):
+        if any(kw in text_low for kw in GERMAN_CERT_KEYWORDS):
             score += 5
-
-        if "sprachprüfung" in text_low or "language exam" in text_low:
+        if any(kw in text_low for kw in GERMAN_GENERIC_KEYWORDS):
             score += 2
 
     elif prog == "ai":
-
-        en_certs = [
-            "toefl",
-            "test of english as a foreign language",
-            "ielts",
-            "cambridge english",
-            "b2 first",
-            "first certificate",
-            "linguaskill",
-            "language test report form",
-            "english language test",
-        ]
-        if any(kw in text_low for kw in en_certs):
+        if any(kw in text_low for kw in ENGLISH_CERT_KEYWORDS):
             score += 5
-
-        if "overall band" in text_low or "overall score" in text_low:
+        if any(kw in text_low for kw in ENGLISH_GENERIC_KEYWORDS):
             score += 2
 
     return score
 
 
+DEGREE_KEYWORDS = [
+    "bachelorzeugnis", "zeugnis", "urkunde", "bachelor of science",
+    "bachelor of arts", "bachelor of engineering", "bachelor of",
+    "degree certificate", "degree", "diploma", "baccalaureate",
+    "this is to certify that", "has been awarded the degree",
+]
+DEGREE_GRADE_KEYWORDS = ["gesamtnote", "abschlussnote", "overall grade"]
+TRANSCRIPT_INDICATORS = ("transcript", "ects", "credits")
+
 def score_degree_certificate(text_low: str, text_norm: str) -> int:
     score = 0
-
-    degree_keywords = [
-        "bachelorzeugnis",
-        "zeugnis",
-        "urkunde",
-        "bachelor of science",
-        "bachelor of arts",
-        "bachelor of engineering",
-        "bachelor of",
-        "degree certificate",
-        "degree",
-        "diploma",
-        "baccalaureate",
-        "this is to certify that",
-        "has been awarded the degree",
-    ]
-    if any(kw in text_low for kw in degree_keywords):
+    
+    if any(kw in text_low for kw in DEGREE_KEYWORDS):
         score += 4
-
-    if any(kw in text_low for kw in ["gesamtnote", "abschlussnote", "overall grade"]):
+    if any(kw in text_low for kw in DEGREE_GRADE_KEYWORDS):
         score += 2
 
-    if "transcript" not in text_low and "ects" not in text_low and "credits" not in text_low:
+    # Negative check: Ensure it doesn't look like a Transcript
+    # If NONE of the transcript indicators are present, add a point.
+    if not any(kw in text_low for kw in TRANSCRIPT_INDICATORS):
         score += 1
 
     return score
 
+VPD_KEYWORDS = [
+    "vorprüfungsdokumentation", 
+    "vorpruefungsdokumentation", 
+    "vpd", 
+    "uni-assist", 
+    "uni assist"
+]
+# These must ALL be present to trigger the bonus score
+VPD_CONTENT_PHRASES = ("bewertung", "ausländischer hochschulabschluss")
 
 def score_vpd(text_low: str) -> int:
     score = 0
-
-    vpd_keywords = [
-        "vorprüfungsdokumentation",
-        "vorpruefungsdokumentation",
-        "vpd",
-        "uni-assist",
-        "uni assist",
-    ]
-    if any(kw in text_low for kw in vpd_keywords):
+    
+    # 1. Check strong VPD keywords (OR logic)
+    if any(kw in text_low for kw in VPD_KEYWORDS):
         score += 6
 
-    if "bewertung" in text_low and "ausländischer hochschulabschluss" in text_low:
+    # 2. Check for specific phrase combination (AND logic)
+    if all(phrase in text_low for phrase in VPD_CONTENT_PHRASES):
         score += 2
 
     return score
 
 
-def classify_document(pdf_path: str, program: str):
-
-    text = quick_ocr_preview(pdf_path, dpi=200, psm=6, max_pages=2)
+def classify_document(pdf_path: str, program: str) -> Tuple[str, Dict[str, int]]:
+    logging.info(f"Classifying: {os.path.basename(pdf_path)}")
+    
+    # -------------------------------------------------------------
+    # OPTIMIZATION: Only OCR the first page for classification
+    # -------------------------------------------------------------
+    text = ocr_text_from_pdf(pdf_path, max_pages=1)
+    
     if not text.strip():
-        return "other", {"transcript": 0, "language_certificate": 0,
-                         "degree_certificate": 0, "vpd": 0}
+        return "other", {"transcript": 0, "language_certificate": 0, "degree_certificate": 0, "vpd": 0}
 
     text_low = text.lower()
     text_norm = normalize_text(text)
 
-    scores = {}
-    scores["transcript"] = score_transcript(text_low, text_norm)
-    scores["language_certificate"] = score_language_cert(text_low, program)
-    scores["degree_certificate"] = score_degree_certificate(
-        text_low, text_norm)
-    scores["vpd"] = score_vpd(text_low)
+    scores = {
+        "transcript": score_transcript(text_low, text_norm),
+        "language_certificate": score_language_cert(text_low, program),
+        "degree_certificate": score_degree_certificate(text_low, text_norm),
+        "vpd": score_vpd(text_low)
+    }
 
     best_type = max(scores, key=scores.get)
     best_score = scores[best_type]
 
-    if best_score < 2:
-        doc_type = "other"
-    else:
-        doc_type = best_type
-
+    # Threshold: If the best match is weak, call it 'other'
+    doc_type = best_type if best_score >= 2 else "other"
+    
     return doc_type, scores
 
 
-def classify_many(pdf_paths, program: str):
-
+def classify_many(pdf_paths: List[str], program: str):
     by_type = {
         "transcript": [],
         "language_certificate": [],
@@ -201,17 +164,20 @@ def classify_many(pdf_paths, program: str):
         "vpd": [],
         "other": [],
     }
+    
     best_transcript = (None, None)
     best_transcript_score = -1
 
-    for p in pdf_paths:
-        doc_type, scores = classify_document(p, program)
-        by_type.setdefault(doc_type, []).append(p)
+    for pdf_path in pdf_paths:
+        doc_type, scores = classify_document(pdf_path, program)
+        by_type.setdefault(doc_type, []).append(pdf_path)
+        
+        # Track the 'strongest' transcript candidate
         if doc_type == "transcript":
             sc = scores.get("transcript", 0)
             if sc > best_transcript_score:
                 best_transcript_score = sc
-                best_transcript = (p, scores)
+                best_transcript = (pdf_path, scores)
 
     return {
         "by_type": by_type,

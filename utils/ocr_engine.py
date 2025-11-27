@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import re
+import logging
 from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
@@ -23,7 +24,7 @@ def configure_tesseract():
 
     if env_cmd and os.path.exists(env_cmd):
         pytesseract.pytesseract.tesseract_cmd = env_cmd
-        print(f"INFO: Using TESSERACT_CMD={env_cmd}")
+        logging.info(f"Using TESSERACT_CMD={env_cmd}")
         return
 
     system = platform.system()
@@ -32,7 +33,7 @@ def configure_tesseract():
         found = shutil.which("tesseract")
         if found:
             pytesseract.pytesseract.tesseract_cmd = found
-            print(f"INFO: Found Tesseract on Linux at {found}")
+            logging.info(f"Found Tesseract on Linux at {found}")
             return
 
     if system == "Darwin":
@@ -43,13 +44,13 @@ def configure_tesseract():
         for p in possible:
             if os.path.exists(p):
                 pytesseract.pytesseract.tesseract_cmd = p
-                print(f"INFO: Found Tesseract on macOS at {p}")
+                logging.info(f"Found Tesseract on macOS at {p}")
                 return
         # fallback: try PATH
         found = shutil.which("tesseract")
         if found:
             pytesseract.pytesseract.tesseract_cmd = found
-            print(f"INFO: Found Tesseract via PATH at {found}")
+            logging.info(f"Found Tesseract via PATH at {found}")
             return
 
     if system == "Windows":
@@ -60,13 +61,13 @@ def configure_tesseract():
         for p in possible:
             if os.path.exists(p):
                 pytesseract.pytesseract.tesseract_cmd = p
-                print(f"INFO: Found Tesseract on Windows at {p}")
+                logging.info(f"Found Tesseract on Windows at {p}")
                 return
 
         found = shutil.which("tesseract")
         if found:
             pytesseract.pytesseract.tesseract_cmd = found
-            print(f"INFO: Found Tesseract on Windows via PATH at {found}")
+            logging.info(f"Found Tesseract on Windows via PATH at {found}")
             return
 
     raise RuntimeError(
@@ -77,29 +78,27 @@ def configure_tesseract():
 CPU_THREADS = os.cpu_count() or 1
 OCR_THREADS = max(1, int(CPU_THREADS * 0.9))
 
-print(
-    f"INFO: OCR engine detected {CPU_THREADS} CPU threads, "
+logging.info(
+    f"OCR engine detected {CPU_THREADS} CPU threads, "
     f"using up to {OCR_THREADS} threads for page-level OCR."
 )
 
 
+UMLAUT_PATTERN = re.compile(r"[äöüß]")
+NON_ALPHANUM_PATTERN = re.compile(r"[^a-z0-9\s]")
+WHITESPACE_PATTERN = re.compile(r"\s+")
+UMLAUT_MAP = {
+    "ä": "ae",
+    "ö": "oe",
+    "ü": "ue",
+    "ß": "ss",
+}
 def normalize_text(s: str) -> str:
-
     s = s.lower()
-
-    replacements = {
-        "ä": "ae",
-        "ö": "oe",
-        "ü": "ue",
-        "ß": "ss",
-    }
-    for src, tgt in replacements.items():
-        s = s.replace(src, tgt)
-
-    s = re.sub(r"[^a-z0-9\s]", " ", s)
-    s = re.sub(r"\s+", " ", s).strip()
+    s = UMLAUT_PATTERN.sub(lambda match: UMLAUT_MAP[match.group(0)], s)
+    s = NON_ALPHANUM_PATTERN.sub(" ", s)
+    s = WHITESPACE_PATTERN.sub(" ", s).strip()
     return s
-
 
 def is_trash_line(line: str) -> bool:
 
@@ -302,7 +301,7 @@ def extract_ects_ocr(pdf_path, module_map_dict, categories):
         return {cat: 0.0 for cat in categories}, [], [], "ocr_hocr"
 
     if not os.path.exists(pdf_path):
-        print(f"WARNING: extract_ects_ocr() with non-existing PDF: {pdf_path}")
+        logging.warn(f"extract_ects_ocr() with non-existing PDF: {pdf_path}")
         return {cat: 0.0 for cat in categories}, [], [], "ocr_hocr"
 
     DPIS = [200, 300]

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import re
+import logging
 from typing import List, Tuple, Optional
 
 from .ocr_ects import ocr_text_from_pdf
@@ -12,8 +13,8 @@ def _merge_texts(pdf_paths: List[str]) -> str:
         try:
             parts.append(ocr_text_from_pdf(p))
         except Exception as e:
-            print(
-                f"error language certicate couldnt be read{p}: {e}")
+            logging.error(
+                f"language certicate couldnt be read{p}: {e}")
     return "\n".join(parts)
 
 
