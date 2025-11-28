@@ -6,6 +6,8 @@ from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
 
+from PIL import Image
+Image.MAX_IMAGE_PIXELS = 933120000
 from pdf2image import convert_from_path
 import pytesseract
 from pytesseract import Output
@@ -108,7 +110,7 @@ TRASH_PATTERN = re.compile(r"[A-Za-zÄÖÜäöüß]{4,}")
 TRASH_PATTERN_2 = re.compile(r"\d")
 def is_trash_line(line: str) -> bool:
 
-    if not line.strip():
+    if not line or line.isspace():
         return True
 
     if TRASH_PATTERN.search(line):
@@ -133,7 +135,7 @@ def _ocr_page_to_lines_and_grid(args): #XXX deprecated
     config = f"--psm {psm}"
 
     text = pytesseract.image_to_string(img, lang="deu+eng", config=config)
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    lines = [ln.strip() for ln in text.splitlines() if not ln.isspace()]
     notes = NOTE_RE.findall(text)
 
     data = pytesseract.image_to_data(
@@ -144,7 +146,7 @@ def _ocr_page_to_lines_and_grid(args): #XXX deprecated
     tokens = []
     for i in range(n):
         txt = data["text"][i]
-        if not txt or txt.strip() == "" or txt.strip() == "|":
+        if not txt or txt.isspace() or txt.strip() == "|":
             continue
         x = data["left"][i]
         y = data["top"][i]
@@ -216,7 +218,7 @@ def _process_page_optimized(img): # replaces _ocr_page_to_lines_and_grid
     
     for i in range(n):
         txt = data["text"][i]
-        if not txt or txt.strip() == "":
+        if not txt or txt.isspace():
             continue
             
         x, y, w, h = data["left"][i], data["top"][i], data["width"][i], data["height"][i]
@@ -359,18 +361,6 @@ def match_modules_in_row(row_text, module_map, allow_fuzzy=True):
 
 
 def _build_module_list_from_mapping(module_map_dict):
-#    modules = []
-#    for name, cat in module_map_dict.items():
-#        if not name or not cat:
-#            continue
-#        modules.append(
-#            Module(
-#                name=str(name).strip().lower(),
-#                category=str(cat).strip(),
-#                ects=None,
-#            )
-#        )
-#    return modules
     return [Module(
                 name=str(name).strip().lower(),
                 category=str(cat).strip(),

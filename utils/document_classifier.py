@@ -20,27 +20,34 @@ TRANSCRIPT_KEYWORDS = [
     "grade history", "performance report", "performance transcript",
 ]
 ECTS_KEYWORDS = ["ects", "leistungspunkte", "credits", "credit points", "cp "]
-SEMESTER_RE = re.compile(r"(wise|sose|wintersemester|sommersemester|ws ?20|ss ?20)")
+TRANSCRIPT_RE = re.compile(
+    "|".join(re.escape(k) for k in TRANSCRIPT_KEYWORDS), 
+    re.IGNORECASE
+)
+
+ECTS_RE = re.compile(
+    "|".join(re.escape(k) for k in ECTS_KEYWORDS), 
+    re.IGNORECASE
+)
+
+SEMESTER_RE = re.compile(
+    r"(wise|sose|wintersemester|sommersemester|ws ?20|ss ?20)", 
+    re.IGNORECASE
+)
 LINE_WITH_DIGIT_RE = re.compile(r"^.*\d.*$", re.MULTILINE)
 
-def score_transcript(text_low: str) -> int:
+def score_transcript(text: str) -> int:
     score = 0
-    
-    if any(kw in text_low for kw in TRANSCRIPT_KEYWORDS):
+    if TRANSCRIPT_RE.search(text):
         score += 4
-
-    if any(kw in text_low for kw in ECTS_KEYWORDS):
+    if ECTS_RE.search(text):
         score += 3
-
-    if len(SEMESTER_RE.findall(text_low)) >= 2:
+    semester_count = sum(1 for _ in SEMESTER_RE.finditer(text))
+    if semester_count >= 2:
         score += 2
-
-    # Heuristic: Transcripts usually have many lines with numbers (grades/credits)
-    numeric_line_count = len(LINE_WITH_DIGIT_RE.findall(text_low))
-    
+    numeric_line_count = sum(1 for _ in LINE_WITH_DIGIT_RE.finditer(text))
     if numeric_line_count > 20:
         score += 1
-
     return score
 
 GERMAN_CERT_KEYWORDS = [
@@ -59,23 +66,35 @@ ENGLISH_CERT_KEYWORDS = [
     "linguaskill", "language test report form", "english language test",
 ]
 ENGLISH_GENERIC_KEYWORDS = ("overall band", "overall score")
-
-def score_language_cert(text_low: str, program: str) -> int:
+GERMAN_CERT_RE = re.compile(
+    "|".join(re.escape(k) for k in GERMAN_CERT_KEYWORDS), 
+    re.IGNORECASE
+)
+GERMAN_GENERIC_RE = re.compile(
+    "|".join(re.escape(k) for k in GERMAN_GENERIC_KEYWORDS), 
+    re.IGNORECASE
+)
+ENGLISH_CERT_RE = re.compile(
+    "|".join(re.escape(k) for k in ENGLISH_CERT_KEYWORDS), 
+    re.IGNORECASE
+)
+ENGLISH_GENERIC_RE = re.compile(
+    "|".join(re.escape(k) for k in ENGLISH_GENERIC_KEYWORDS), 
+    re.IGNORECASE
+)
+def score_language_cert(text: str, program: str) -> int:
     score = 0
     prog = program.lower()
-
     if prog == "bwl":
-        if any(kw in text_low for kw in GERMAN_CERT_KEYWORDS):
+        if GERMAN_CERT_RE.search(text):
             score += 5
-        if any(kw in text_low for kw in GERMAN_GENERIC_KEYWORDS):
+        if GERMAN_GENERIC_RE.search(text):
             score += 2
-
     elif prog == "ai":
-        if any(kw in text_low for kw in ENGLISH_CERT_KEYWORDS):
+        if ENGLISH_CERT_RE.search(text):
             score += 5
-        if any(kw in text_low for kw in ENGLISH_GENERIC_KEYWORDS):
+        if ENGLISH_GENERIC_RE.search(text):
             score += 2
-
     return score
 
 
@@ -137,15 +156,12 @@ def classify_document(pdf_path: str, program: str) -> Tuple[str, Dict[str, int]]
     # -------------------------------------------------------------
     text = ocr_text_from_pdf(pdf_path, max_pages=1)
     
-    if not text.strip():
+    if not text or text.isspace():
         return "other", {"transcript": 0, "language_certificate": 0, "degree_certificate": 0, "vpd": 0}
 
-    text_low = text.lower()
-    #text_norm = normalize_text(text) # unused!
-
     scores = {
-        "transcript": score_transcript(text_low),
-        "language_certificate": score_language_cert(text_low, program),
+        "transcript": score_transcript(text),
+        "language_certificate": score_language_cert(text, program),
         "degree_certificate": score_degree_certificate(text),
         "vpd": score_vpd(text)
     }

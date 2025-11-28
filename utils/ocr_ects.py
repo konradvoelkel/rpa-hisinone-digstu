@@ -10,15 +10,16 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Tuple
 
+# Import your external ECTS engine
+from utils.ocr_engine import extract_ects_ocr
+from utils.claimed_dom_extract import _floatcast
+
 try:
     from pdf2image import convert_from_path
     import pytesseract
 except ImportError:
     convert_from_path = None
     pytesseract = None
-
-# Import your external ECTS engine
-from utils.ocr_engine import extract_ects_ocr
 
 # ==============================================================================
 # 1. GLOBAL CONFIGURATION & ENVIRONMENT SETUP
@@ -217,7 +218,7 @@ def extract_ocr_note(text: str) -> Optional[float]:
         m = NOTE_STRICT_RE.search(ln)
         if m:
             try:
-                val = float(m.group(1).replace(",", "."))
+                val = _floatcast(m.group(1))
                 logging.debug(f"OCR-Note found: {val} in line '{ln[:50]}...'")
                 return val
             except ValueError: continue
