@@ -85,9 +85,11 @@ def load_whitelist(csv_path):
     with open(csv_path, newline="", encoding="utf-8") as f:
         reader = csv.reader(f)
         next(reader, None)
-        for row in reader:
-            if row and row[0].strip():
-                whitelist.add(row[0].strip().lower())
+        whitelist = {stripped.lower()
+                     for stripped in (row[0].strip()
+                                      for row in reader
+                                      if row)
+                     if stripped}
     logging.info(f"Whitelist geladen: {len(whitelist)} Einträge.")
     return whitelist
 
@@ -239,6 +241,7 @@ async def _run_filterphase_evaluierung_async(bot, flow_url, config):
 
     # 5. Main Processing Loop (Iterate over Indices)
     pending_tasks = set()
+    # XXX  again this OCR/multiprocessing config should be centralized :-/
     MAX_CONCURRENT_OCR = 3  # Prevent overloading the CPU if browser is too fast
 
     progressbar = tqdm.tqdm(candidate_indices, desc="Processing", unit="app")
@@ -417,7 +420,7 @@ async def _step2_analyze_async(pdfs, program, is_non_eu, module_map, whitelist_s
         # C. Write Result to CSV immediately upon completion
         # We calculate duration relative to when the analysis *finished*
         _write_result_to_csv(paths["output_csv"], res, categories)
-        logging.info(f"Finished Analysis for {res['applicant_num']}")
+        logging.debug(f"Finished Analysis for {res['applicant_num']}")
         
     except Exception as e:
         logging.error(f"Async Analysis Error {res['applicant_num']}: {e}")
@@ -495,6 +498,7 @@ def _navigate_to_applicant_detail_by_index(bot, target_index, main_window_handle
 def _analyze_grade_logic(pdfs, is_non_eu, res, config):
     ocr_note = None
     has_vpd = False
+
     
     vpd_pdfs = [pdf_path for pdf_path in pdfs if "vpd" in os.path.basename(pdf_path).lower()]
     

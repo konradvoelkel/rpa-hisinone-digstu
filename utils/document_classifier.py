@@ -23,7 +23,7 @@ ECTS_KEYWORDS = ["ects", "leistungspunkte", "credits", "credit points", "cp "]
 SEMESTER_RE = re.compile(r"(wise|sose|wintersemester|sommersemester|ws ?20|ss ?20)")
 LINE_WITH_DIGIT_RE = re.compile(r"^.*\d.*$", re.MULTILINE)
 
-def score_transcript(text_low: str, text_norm: str) -> int:
+def score_transcript(text_low: str) -> int:
     score = 0
     
     if any(kw in text_low for kw in TRANSCRIPT_KEYWORDS):
@@ -79,51 +79,53 @@ def score_language_cert(text_low: str, program: str) -> int:
     return score
 
 
-DEGREE_KEYWORDS = [
-    "bachelorzeugnis", "zeugnis", "urkunde", "bachelor of science",
-    "bachelor of arts", "bachelor of engineering", "bachelor of",
-    "degree certificate", "degree", "diploma", "baccalaureate",
-    "this is to certify that", "has been awarded the degree",
-]
-DEGREE_GRADE_KEYWORDS = ["gesamtnote", "abschlussnote", "overall grade"]
-TRANSCRIPT_INDICATORS = ("transcript", "ects", "credits")
+DEGREE_RE = re.compile(
+    r"""
+    bachelorzeugnis|zeugnis|urkunde|diploma|baccalaureate|
+    bachelor\s+of|                 # Covers Arts, Science, Eng, etc.
+    \bdegree(?:\s+certificate)?|   # Matches "degree" or "degree certificate"
+    this\s+is\s+to\s+certify\s+that|
+    has\s+been\s+awarded\s+the\s+degree
+    """,
+    re.IGNORECASE | re.VERBOSE
+)
+GRADE_RE = re.compile(
+    r"gesamtnote|abschlussnote|overall\s+grade", 
+    re.IGNORECASE
+)
+TRANSCRIPT_RE = re.compile(
+    r"\b(?:transcript|ects|credits|cp)\b", 
+    re.IGNORECASE
+)
 
-def score_degree_certificate(text_low: str, text_norm: str) -> int:
+def score_degree_certificate(text: str) -> int:
     score = 0
-    
-    if any(kw in text_low for kw in DEGREE_KEYWORDS):
+    if DEGREE_RE.search(text):
         score += 4
-    if any(kw in text_low for kw in DEGREE_GRADE_KEYWORDS):
+    if GRADE_RE.search(text):
         score += 2
-
-    # Negative check: Ensure it doesn't look like a Transcript
-    # If NONE of the transcript indicators are present, add a point.
-    if not any(kw in text_low for kw in TRANSCRIPT_INDICATORS):
+    if not TRANSCRIPT_RE.search(text):
         score += 1
-
     return score
 
-VPD_KEYWORDS = [
-    "vorprüfungsdokumentation", 
-    "vorpruefungsdokumentation", 
-    "vpd", 
-    "uni-assist", 
-    "uni assist"
-]
-# These must ALL be present to trigger the bonus score
-VPD_CONTENT_PHRASES = ("bewertung", "ausländischer hochschulabschluss")
 
-def score_vpd(text_low: str) -> int:
+VPD_KEYWORD_RE = re.compile(
+    r"vorpr(?:ü|ue)fungsdokumentation|vpd|uni[- ]assist",
+    re.IGNORECASE
+)
+VPD_CONTENT_RE = re.compile(
+    r"(?=.*bewertung)(?=.*ausländischer\s+hochschulabschluss)",
+    re.IGNORECASE | re.DOTALL
+)
+
+def score_vpd(text: str) -> int:
     score = 0
-    
     # 1. Check strong VPD keywords (OR logic)
-    if any(kw in text_low for kw in VPD_KEYWORDS):
+    if VPD_KEYWORD_RE.search(text):
         score += 6
-
     # 2. Check for specific phrase combination (AND logic)
-    if all(phrase in text_low for phrase in VPD_CONTENT_PHRASES):
+    if VPD_CONTENT_RE.search(text):
         score += 2
-
     return score
 
 
@@ -139,13 +141,13 @@ def classify_document(pdf_path: str, program: str) -> Tuple[str, Dict[str, int]]
         return "other", {"transcript": 0, "language_certificate": 0, "degree_certificate": 0, "vpd": 0}
 
     text_low = text.lower()
-    text_norm = normalize_text(text)
+    #text_norm = normalize_text(text) # unused!
 
     scores = {
-        "transcript": score_transcript(text_low, text_norm),
+        "transcript": score_transcript(text_low),
         "language_certificate": score_language_cert(text_low, program),
-        "degree_certificate": score_degree_certificate(text_low, text_norm),
-        "vpd": score_vpd(text_low)
+        "degree_certificate": score_degree_certificate(text),
+        "vpd": score_vpd(text)
     }
 
     best_type = max(scores, key=scores.get)
